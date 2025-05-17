@@ -1,0 +1,58 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:  
+  contents: write  
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            platform: aarch64-apple-darwin
+    
+    runs-on: ${{ matrix.os }}  
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --release
+      - name: Move release binary
+        run: mv target/release/${{ github.event.repository.name }} target/release/${{ github.event.repository.name }}-${{ matrix.platform }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-${{ matrix.platform }}
+          path: target/release/${{ github.event.repository.name }}-${{ matrix.platform }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          pattern: "*"
+          merge-multiple: true
+      - name: Upload binaries  
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |  
+            Automated release of version ${{ github.ref_name }}.
+          files: ./artifacts/*
